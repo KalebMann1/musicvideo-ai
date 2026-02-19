@@ -1,13 +1,14 @@
-# This is the main entry point for the backend server
-# Copy and paste everything in this block into backend/main.py
+# Main entry point for the backend server
+# Copy and paste everything into backend/main.py
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from routes.upload import router as upload_router
+from routes.analyze import router as analyze_router
 
 app = FastAPI(title="MusicVideo AI", version="1.0.0")
 
-# This allows our frontend to talk to our backend later
+# Allow frontend to talk to backend
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -16,8 +17,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Register the upload routes under /api
+# Register routes
 app.include_router(upload_router, prefix="/api")
+app.include_router(analyze_router, prefix="/api")
 
 @app.get("/")
 def root():
