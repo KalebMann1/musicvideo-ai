@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from routes.upload import router as upload_router
 from routes.analyze import router as analyze_router
+from routes.generate import router as generate_router
 
 app = FastAPI(title="MusicVideo AI", version="1.0.0")
 
@@ -17,9 +18,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Register routes
+# Register all routes
 app.include_router(upload_router, prefix="/api")
 app.include_router(analyze_router, prefix="/api")
+app.include_router(generate_router, prefix="/api")
 
 @app.get("/")
 def root():
