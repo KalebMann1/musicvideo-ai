@@ -1,30 +1,20 @@
-# Upload endpoint with chunked file writing - handles large files properly
+# Upload endpoint - saves files to AWS S3 instead of local disk
 # Copy and paste everything into backend/routes/upload.py
 
 import os
 import uuid
+import tempfile
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from typing import List
+from services.s3_storage import upload_fileobj_to_s3
 
 router = APIRouter()
-
-UPLOAD_DIR = "uploads"
-os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 def is_valid_video(filename: str) -> bool:
     return filename.lower().endswith((".mp4", ".mov", ".avi"))
 
 def is_valid_audio(filename: str) -> bool:
     return filename.lower().endswith((".mp3", ".wav"))
-
-async def save_file(upload: UploadFile, path: str):
-    # Write file in 1MB chunks instead of loading it all into memory at once
-    with open(path, "wb") as f:
-        while True:
-            chunk = await upload.read(1024 * 1024)
-            if not chunk:
-                break
-            f.write(chunk)
 
 @router.post("/upload")
 async def upload_files(
@@ -48,31 +38,24 @@ async def upload_files(
             if not is_valid_video(clip.filename):
                 raise HTTPException(status_code=400, detail=f"{clip.filename} is not a valid video file")
 
-    # Create project folder structure
     project_id = str(uuid.uuid4())
-    project_dir = os.path.join(UPLOAD_DIR, project_id)
-    artist_dir = os.path.join(project_dir, "artist_clips")
-    broll_dir = os.path.join(project_dir, "broll_clips")
 
-    os.makedirs(artist_dir, exist_ok=True)
-    os.makedirs(broll_dir, exist_ok=True)
+    # Upload song to S3
+    song_key = f"projects/{project_id}/song/{song.filename}"
+    upload_fileobj_to_s3(song.file, song_key)
 
-    # Save song in chunks
-    song_path = os.path.join(project_dir, song.filename)
-    await save_file(song, song_path)
-
-    # Save artist clips in chunks
+    # Upload artist clips to S3
     saved_artist_clips = []
     for clip in artist_clips:
-        clip_path = os.path.join(artist_dir, clip.filename)
-        await save_file(clip, clip_path)
+        key = f"projects/{project_id}/artist_clips/{clip.filename}"
+        upload_fileobj_to_s3(clip.file, key)
         saved_artist_clips.append(clip.filename)
 
-    # Save broll clips in chunks
+    # Upload broll clips to S3
     saved_broll_clips = []
     for clip in broll_clips:
-        clip_path = os.path.join(broll_dir, clip.filename)
-        await save_file(clip, clip_path)
+        key = f"projects/{project_id}/broll_clips/{clip.filename}"
+        upload_fileobj_to_s3(clip.file, key)
         saved_broll_clips.append(clip.filename)
 
     return {
