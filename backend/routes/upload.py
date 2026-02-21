@@ -1,6 +1,4 @@
-# Updated upload endpoint that handles two clip types:
-# artist_clips (lip sync clips that need audio matching)
-# broll_clips (filler clips that get placed by energy matching)
+# Upload endpoint with chunked file writing - handles large files properly
 # Copy and paste everything into backend/routes/upload.py
 
 import os
@@ -19,27 +17,32 @@ def is_valid_video(filename: str) -> bool:
 def is_valid_audio(filename: str) -> bool:
     return filename.lower().endswith((".mp3", ".wav"))
 
+async def save_file(upload: UploadFile, path: str):
+    # Write file in 1MB chunks instead of loading it all into memory at once
+    with open(path, "wb") as f:
+        while True:
+            chunk = await upload.read(1024 * 1024)
+            if not chunk:
+                break
+            f.write(chunk)
+
 @router.post("/upload")
 async def upload_files(
     song: UploadFile = File(...),
     artist_clips: List[UploadFile] = File(default=[]),
-        broll_clips: List[UploadFile] = File(default=[])
+    broll_clips: List[UploadFile] = File(default=[])
 ):
-    # Validate song
     if not is_valid_audio(song.filename):
         raise HTTPException(status_code=400, detail="Song must be an MP3 or WAV file")
 
-    # Make sure at least one clip type was uploaded
     if not artist_clips and not broll_clips:
-        raise HTTPException(status_code=400, detail="Upload at least one artist clip or B-roll clip")
+        raise HTTPException(status_code=400, detail="Upload at least one clip")
 
-    # Validate artist clips if provided
     if artist_clips:
         for clip in artist_clips:
             if not is_valid_video(clip.filename):
                 raise HTTPException(status_code=400, detail=f"{clip.filename} is not a valid video file")
 
-    # Validate broll clips if provided
     if broll_clips:
         for clip in broll_clips:
             if not is_valid_video(clip.filename):
@@ -54,28 +57,23 @@ async def upload_files(
     os.makedirs(artist_dir, exist_ok=True)
     os.makedirs(broll_dir, exist_ok=True)
 
-    # Save the song
+    # Save song in chunks
     song_path = os.path.join(project_dir, song.filename)
-    with open(song_path, "wb") as f:
-        f.write(await song.read())
+    await save_file(song, song_path)
 
-    # Save artist clips
+    # Save artist clips in chunks
     saved_artist_clips = []
-    if artist_clips:
-        for clip in artist_clips:
-            clip_path = os.path.join(artist_dir, clip.filename)
-            with open(clip_path, "wb") as f:
-                f.write(await clip.read())
-            saved_artist_clips.append(clip.filename)
+    for clip in artist_clips:
+        clip_path = os.path.join(artist_dir, clip.filename)
+        await save_file(clip, clip_path)
+        saved_artist_clips.append(clip.filename)
 
-    # Save broll clips
+    # Save broll clips in chunks
     saved_broll_clips = []
-    if broll_clips:
-        for clip in broll_clips:
-            clip_path = os.path.join(broll_dir, clip.filename)
-            with open(clip_path, "wb") as f:
-                f.write(await clip.read())
-            saved_broll_clips.append(clip.filename)
+    for clip in broll_clips:
+        clip_path = os.path.join(broll_dir, clip.filename)
+        await save_file(clip, clip_path)
+        saved_broll_clips.append(clip.filename)
 
     return {
         "project_id": project_id,
